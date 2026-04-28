@@ -820,6 +820,11 @@ with tab6:
     # -----------------------------------
 
     # Options pour afficher ou non les pages détaillées du devis et du coût de revient dans le PDF
+    show_marge = st.checkbox(
+        "Voir la marge",
+        value=False,
+        help="Lorsque cette option est cochée, la marge HT est affichée dans l'aperçu."
+    )
     show_detail_devis = st.checkbox(
         "Afficher le détail du devis (page 2)",
         value=False,
@@ -844,6 +849,7 @@ with tab6:
     # lorsque l'utilisateur choisit le type de canapé.
 
     # Stocker les choix dans la session pour les utiliser lors de la génération du PDF
+    st.session_state['show_marge'] = show_marge
     st.session_state['show_detail_devis'] = show_detail_devis
     st.session_state['show_detail_cr'] = show_detail_cr
     st.session_state['show_detail_usine'] = show_detail_usine
@@ -1209,7 +1215,8 @@ with tab6:
                         current_reduc = float(st.session_state.get('reduction_ttc', 0.0) or 0.0)
                         # Affichage du prix TTC, de la marge totale HT et de la réduction TTC appliquée
                         st.markdown(f"**Prix TTC :** {total_ttc_apres_remise:.2f} €")
-                        st.markdown(f"**Marge HT :** {marge_totale_ht:.2f} €")
+                        if st.session_state.get('show_marge', False):
+                            st.markdown(f"**Marge HT :** {marge_totale_ht:.2f} €")
                         # Affichage de la réduction TTC saisie, en négatif pour rappel
                         st.markdown(f"**Réduction TTC :** -{current_reduc:.2f} €")
                     with schema_col:
@@ -1223,7 +1230,8 @@ with tab6:
                     if reduction_ttc and reduction_ttc > 0:
                         st.markdown(f"**Réduction TTC :** -{reduction_ttc:.2f} €")
                     st.markdown(f"**Prix de vente TTC total après réduction :** {total_ttc_apres_remise:.2f} €")
-                    st.markdown(f"**Marge totale HT :** {marge_totale_ht:.2f} €")
+                    if st.session_state.get('show_marge', False):
+                        st.markdown(f"**Marge totale HT :** {marge_totale_ht:.2f} €")
 
                     # Stockage des valeurs pour utilisation lors de la génération du PDF
                     st.session_state['breakdown_rows'] = breakdown_rows
@@ -1747,7 +1755,8 @@ with st.spinner("Mise à jour du schéma en cours..."):
             marge_ht_final = max(0.0, marge_ht_preview - (reduc_val / 1.20))
 
             st.markdown(f"**Prix TTC :** <span style='color:#28a745; font-size:1.2em'>{prix_ttc_final:.2f} €</span>", unsafe_allow_html=True)
-            st.markdown(f"**Marge HT :** {marge_ht_final:.2f} €")
+            if st.session_state.get('show_marge', False):
+                st.markdown(f"**Marge HT :** {marge_ht_final:.2f} €")
             
         # --- FIN DU BLOC À REMPLACER ---
         
