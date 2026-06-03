@@ -4265,15 +4265,24 @@ def _choose_cushion_size_auto(pts, tx, ty, meridienne_side=None, meridienne_len=
     if traversins:
         if "b" in traversins: x_end -= TRAVERSIN_THK
         if "g" in traversins: y_end -= TRAVERSIN_THK
-    usable_h = max(0.0, x_end - xF)
-    usable_v = max(0.0, y_end - y_start)
-
-    candidates = [65, 80, 90]
-    def score(s):
-        waste_h = usable_h % s if usable_h > 0 else 0
-        waste_v = usable_v % s if usable_v > 0 else 0
-        return (max(waste_h, waste_v), -s)
-    return min(candidates, key=score)
+    # Harmonise sur le critere "surface couverte" de _choose_cushion_size_auto_L :
+    # maximiser nb*taille, tie-break dechet minimal puis plus grande taille,
+    # en testant les 2 dispositions de coin (bas colle / gauche colle au coin).
+    def _cnt(length, s):
+        return int(length // s) if length > 0 else 0
+    best_size, best_score = 65, (-1, 0.0, 0)
+    for s in (65, 80, 90):
+        lhA = max(0.0, x_end - xF); lvA = max(0.0, y_end - (yF + CUSHION_DEPTH))
+        nA = _cnt(lhA, s) + _cnt(lvA, s)
+        wA = (lhA % s if lhA > 0 else 0) + (lvA % s if lvA > 0 else 0)
+        lhB = max(0.0, x_end - (xF + CUSHION_DEPTH)); lvB = max(0.0, y_end - yF)
+        nB = _cnt(lhB, s) + _cnt(lvB, s)
+        wB = (lhB % s if lhB > 0 else 0) + (lvB % s if lvB > 0 else 0)
+        cover, waste = (nB * s, wB) if (nB * s, -wB) > (nA * s, -wA) else (nA * s, wA)
+        score = (cover, -waste, s)
+        if score > best_score:
+            best_score, best_size = score, s
+    return best_size
 
 def draw_cousins_and_return_count(t, tr, pts, tx, ty, coussins, meridienne_side, meridienne_len, traversins=None):
     if isinstance(coussins, str) and coussins.strip().lower() == "auto":
@@ -4969,18 +4978,20 @@ def render_U2f_variant(tx, ty_left, tz_right, profondeur=DEPTH_STD,
             if "d" in trv:
                 y_end_R -= TRAVERSIN_THK
         best_size = 65
-        best_score = (1e9, -1)
+        best_score = (-1, 0.0, 0)
         for s in (65, 80, 90):
             usable_h = max(0, F02x - F0x)
             usable_v_L = max(0, y_end_L - (F0y + CUSHION_DEPTH))
             usable_v_R = max(0, y_end_R - (F0y + CUSHION_DEPTH))
-            waste_h = usable_h % s if usable_h > 0 else 0
-            waste_v = max(
-                usable_v_L % s if usable_v_L > 0 else 0,
-                usable_v_R % s if usable_v_R > 0 else 0,
-            )
-            score = (max(waste_h, waste_v), -s)
-            if score < best_score:
+            n = ((int(usable_h // s) if usable_h > 0 else 0)
+                 + (int(usable_v_L // s) if usable_v_L > 0 else 0)
+                 + (int(usable_v_R // s) if usable_v_R > 0 else 0))
+            cover = n * s
+            waste = ((usable_h % s if usable_h > 0 else 0)
+                     + (usable_v_L % s if usable_v_L > 0 else 0)
+                     + (usable_v_R % s if usable_v_R > 0 else 0))
+            score = (cover, -waste, s)
+            if score > best_score:
                 best_score, best_size = score, s
         size = best_size
         cushions_count = _draw_coussins_U2f_optimized_wrapper(
@@ -5203,13 +5214,21 @@ def _choose_cushion_size_auto_U1F(pts, traversins=None):
         if "d" in traversins: y_end_R -= TRAVERSIN_THK
     yL0 = F0y + CUSHION_DEPTH
     yR0 = F0y + CUSHION_DEPTH
-    best, score_best = 65, (1e9,-1)
+    # Harmonise sur le critere "surface couverte" (cf. _choose_cushion_size_auto_L).
+    best, score_best = 65, (-1, 0.0, 0)
     for s in (65,80,90):
-        waste_bas = x_len % s if x_len>0 else 0
-        waste_g   = max(0, y_end_L - yL0) % s if y_end_L>yL0 else 0
-        waste_d   = max(0, y_end_R - yR0) % s if y_end_R>yR0 else 0
-        sc = (max(waste_bas,waste_g,waste_d), -s)
-        if sc < score_best: best, score_best = s, sc
+        len_bas = x_len
+        len_g   = max(0, y_end_L - yL0)
+        len_d   = max(0, y_end_R - yR0)
+        n = ((len_bas // s if len_bas > 0 else 0)
+             + (len_g // s if len_g > 0 else 0)
+             + (len_d // s if len_d > 0 else 0))
+        cover = n * s
+        waste = ((len_bas % s if len_bas > 0 else 0)
+                 + (len_g % s if len_g > 0 else 0)
+                 + (len_d % s if len_d > 0 else 0))
+        sc = (cover, -waste, s)
+        if sc > score_best: best, score_best = s, sc
     return best
 
 def _draw_coussins_U1F(t, tr, pts, size, traversins=None):
@@ -8024,7 +8043,7 @@ def _best_orientation_score_U(variant, pts, drawn, size, traversins=None):
             + (max(0, y_end_L - yL0) % size)
             + (max(0, y_end_R - yR0) % size)
         )
-        return (bas + g + d, -waste, -size), xs, xe, yL0, yR0
+        return ((bas + g + d) * size, -waste, size), xs, xe, yL0, yR0
 
     cands = [
         score(False, False),
